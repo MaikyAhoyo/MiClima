@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'package:weather_app/creditos.dart';
 import 'package:weather_app/clima_carousel_view.dart';
 import 'theme_provider.dart';
 import 'agregar_ciudades_page.dart';
@@ -126,7 +127,7 @@ class _MainWindowState extends State<MainWindow> {
   Future<void> obtenToken() async {
     if (apiToken.isNotEmpty) return;
     if (username.isEmpty || password.isEmpty) {
-      debugPrint('⚠️ Falta usuario/password en .env');
+      debugPrint('⚠ Falta usuario/password en .env');
       return;
     }
 
@@ -258,7 +259,11 @@ class _MainWindowState extends State<MainWindow> {
     return Scaffold(
       body: IndexedStack(
         index: _pageIndex,
-        children: [_buildClimaPage(), AgregarCiudadesPage()],
+        children: [
+          _buildClimaPage(),
+          AgregarCiudadesPage(onCiudadAgregada: _refreshCiudades),
+          const CreditosPage(),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _pageIndex,

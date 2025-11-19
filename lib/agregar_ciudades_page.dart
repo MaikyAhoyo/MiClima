@@ -1,14 +1,15 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-//import 'package:go_router/go_router.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
-import 'app_scaffold.dart';
 
 class AgregarCiudadesPage extends StatefulWidget {
-  const AgregarCiudadesPage({super.key});
+  final VoidCallback? onCiudadAgregada;
+
+  const AgregarCiudadesPage({super.key, this.onCiudadAgregada});
+
   @override
   State<AgregarCiudadesPage> createState() => _AgregarCiudadesPageState();
 }
@@ -17,12 +18,11 @@ class _AgregarCiudadesPageState extends State<AgregarCiudadesPage> {
   final TextEditingController _cityController = TextEditingController();
   final MapController _mapController = MapController();
   List ciudadData = [];
-  double dLat = 29.0948207;
-  double dLon = -110.9692202;
   double selectedLat = 29.0948207;
   double selectedLon = -110.9692202;
   int? selectedIndex;
-  Future<List<Map<String, dynamic>>> ciudadesGuardadas = Future<List<Map<String, dynamic>>>.value([]);
+  Future<List<Map<String, dynamic>>> ciudadesGuardadas =
+      Future<List<Map<String, dynamic>>>.value([]);
 
   @override
   void initState() {
@@ -37,216 +37,292 @@ class _AgregarCiudadesPageState extends State<AgregarCiudadesPage> {
   }
 
   @override
-    Widget build(BuildContext context) {
-    return AppScaffold(
-      title: "Agregar Ciudades",
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Gestionar Ciudades')),
       body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: 
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                "Aquí puedes agregar nuevas ciudades",
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              SizedBox(height: 20),
-              Text("Ciudad"),
-              TextField(
-                controller: _cityController,
-                decoration: InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Ingresa el nombre de la ciudad',
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Campo de búsqueda Material
+            TextField(
+              controller: _cityController,
+              decoration: InputDecoration(
+                labelText: 'Nombre de la ciudad',
+                hintText: 'Ej. Hermosillo',
+                prefixIcon: const Icon(Icons.search),
+                border: const OutlineInputBorder(),
+                suffixIcon: IconButton(
+                  icon: const Icon(Icons.arrow_forward),
+                  onPressed: _realizarBusqueda,
                 ),
               ),
-              // Agregar botón para buscar y agregar ciudad
-              SizedBox(height: 20),
-              ElevatedButton(
-                child: Text("Buscar Ciudad"),
-                onPressed: () async {
-                  final ciudad = _cityController.text;
-                  if (ciudad.isNotEmpty) {
-                    final resultados = await _buscarCiudad(ciudad);
-                    if (!mounted) return;
-                    setState(() {
-                      ciudadData = resultados;
-                    });
-                    debugPrint(ciudadData.toString());
-                  }
-                },
+              onSubmitted: (_) => _realizarBusqueda(),
+            ),
+
+            const SizedBox(height: 16),
+
+            // Resultados de búsqueda
+            if (ciudadData.isNotEmpty) ...[
+              const Text(
+                'Resultados:',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              SizedBox(height: 20),
-              SizedBox(
-                height:200,
-                child: ListView.builder(
+              const SizedBox(height: 8),
+              Container(
+                height: 150,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey.shade300),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ListView.separated(
                   itemCount: ciudadData.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final ciudadInfo = ciudadData[index];
+                    final isSelected = selectedIndex == index;
                     return ListTile(
-                      title: Text(ciudadInfo['display_name']),
-                      subtitle: Text('Lat: ${ciudadInfo['lat']}, Lon: ${ciudadInfo['lon']}'),
-                      selected: selectedIndex == index,
-                      onTap:() {
+                      selected: isSelected,
+                      selectedTileColor: Theme.of(
+                        context,
+                      ).colorScheme.primaryContainer,
+                      leading: const Icon(Icons.location_on),
+                      title: Text(
+                        ciudadInfo['display_name'],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      subtitle: Text(
+                        'Lat: ${ciudadInfo['lat']}, Lon: ${ciudadInfo['lon']}',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      onTap: () {
                         setState(() {
                           selectedIndex = index;
                           _cityController.text = ciudadInfo['display_name'];
                           selectedLat = double.parse(ciudadInfo['lat']);
                           selectedLon = double.parse(ciudadInfo['lon']);
-                          _mapController.move(LatLng(selectedLat, selectedLon), 10);
+                          _mapController.move(
+                            LatLng(selectedLat, selectedLon),
+                            10,
+                          );
                         });
-                      }
-                    );
-                  },
-
-                ),
-              ),
-              SizedBox(height: 20),
-              //aqui va la lista
-              SizedBox(
-                height: 200,
-                child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: ciudadesGuardadas,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError) {
-                      return Text('Error ${snapshot.error}');
-                    }
-                    final data = snapshot.data ?? const <Map<String, dynamic>> [];
-                    if (data.isEmpty) {
-                      return const Center(child: Text('No hay ciudades guardadas.'));
-                    }
-                    return ListView.builder(
-                      itemCount: data.length,
-                      itemBuilder: (context, index) {
-                        final ciudad = data[index];
-                        return ListTile(
-                          title: Text(ciudad['nombre'].toString()),
-                          subtitle: Text('Lat: ${ciudad["latitud"]} Lon: ${ciudad["longitud"]}'),
-
-                        );
                       },
                     );
                   },
-                ), 
-                
-              ),
-              SizedBox(height: 20),
-              //aqui va el boton de agegar ciudades
-              SizedBox(
-                child: ElevatedButton(
-                  child: const Text("Agregar ciudad"), 
-                  onPressed: () {
-                    _agregarCiudad(_cityController.text, selectedLat, selectedLon);
-                  },
                 ),
               ),
-              SizedBox(height: 20),
-              SizedBox(
-                height: 300,
-                // Agregar mapa con flutter_map con control de zoom.
+              const SizedBox(height: 16),
+            ],
+
+            // Botón agregar
+            FilledButton.icon(
+              onPressed: selectedIndex != null
+                  ? () {
+                      _agregarCiudad(
+                        _cityController.text,
+                        selectedLat,
+                        selectedLon,
+                      );
+                    }
+                  : null,
+              icon: const Icon(Icons.add),
+              label: const Text("Agregar ciudad seleccionada"),
+            ),
+
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 16),
+
+            // Lista de ciudades guardadas
+            const Text(
+              'Mis Ciudades',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: ciudadesGuardadas,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final data = snapshot.data ?? [];
+                if (data.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(20.0),
+                      child: Text('No tienes ciudades guardadas.'),
+                    ),
+                  );
+                }
+                return ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: data.length,
+                  itemBuilder: (context, index) {
+                    final ciudad = data[index];
+                    return Card(
+                      child: ListTile(
+                        leading: const Icon(Icons.location_city),
+                        title: Text(ciudad['nombre'].toString()),
+                        subtitle: Text(
+                          'Lat: ${ciudad["latitud"]}, Lon: ${ciudad["longitud"]}',
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () {
+                            _eliminarCiudad(index, ciudad['nombre'].toString());
+                          },
+                        ),
+                        onTap: () {
+                          _mapController.move(
+                            LatLng(ciudad["latitud"], ciudad["longitud"]),
+                            10,
+                          );
+                        },
+                      ),
+                    );
+                  },
+                );
+              },
+            ),
+
+            const SizedBox(height: 24),
+
+            // Mapa
+            const Text(
+              'Vista previa',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              height: 300,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
                 child: FlutterMap(
                   mapController: _mapController,
                   options: MapOptions(
                     initialCenter: LatLng(selectedLat, selectedLon),
                     initialZoom: 10,
-                    maxZoom: 18,
-                    minZoom: 3,
                   ),
                   children: [
                     TileLayer(
-                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      urlTemplate:
+                          'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                       userAgentPackageName: 'com.example.weather_app',
-                      subdomains: ['a', 'b', 'c'],
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: LatLng(selectedLat, selectedLon),
+                          width: 40,
+                          height: 40,
+                          child: const Icon(
+                            Icons.location_on,
+                            color: Colors.red,
+                            size: 40,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-
               ),
-            ]
-          ),
-          //Divider(color: Colors.grey.shade300),
-      ),
+            ),
+          ],
+        ),
       ),
     );
   }
+
+  Future<void> _realizarBusqueda() async {
+    final ciudad = _cityController.text;
+    if (ciudad.isNotEmpty) {
+      final resultados = await _buscarCiudad(ciudad);
+      if (!mounted) return;
+      setState(() {
+        ciudadData = resultados;
+      });
+    }
+  }
+
   Future<List> _buscarCiudad(String nombreCiudad) async {
-    // Aquí iría la lógica para buscar la ciudad en una base de datos o API
-    // Por ahora, devolvemos un mapa simulado
-    // Necesitamos armar el url para  consultar Nominatim con el nombreCiudad
-    final url = 'https://nominatim.openstreetmap.org/search?q=$nombreCiudad&format=json&addressdetails=1';
-    debugPrint('URL de búsqueda: $url');
-    // Hacemos la peticion a Nominatim con el url formado
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      final List data = json.decode(response.body);
-      if (data.isNotEmpty) {
-        //final ciudadInfo = data[0];
-        return data; 
-        /*{
-          'nombre': ciudadInfo['display_name'],
-          'pais': ciudadInfo['address']['country'],
-          'latitud': double.parse(ciudadInfo['lat']),
-          'longitud': double.parse(ciudadInfo['lon']),
-        };*/
+    final url =
+        'https://nominatim.openstreetmap.org/search?q=$nombreCiudad&format=json&addressdetails=1';
+    try {
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'User-Agent': 'WeatherApp/1.0 (Flutter Material)',
+          'Accept': 'application/json',
+        },
+      );
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
       }
+    } catch (e) {
+      debugPrint('Error: $e');
     }
     return [];
-    /*{
-      'nombre': nombreCiudad,
-      'pais': 'País Ejemplo',
-      'latitud': 0.0,
-      'longitud': 0.0,
-    };*/
   }
+
   void _agregarCiudad(String nombre, double lat, double lon) async {
-       debugPrint('=== Iniciando _agregarCiudad ===');
-       debugPrint('Nombre: $nombre, Lat: $lat, Lon: $lon');
-       
-       final prefs = await SharedPreferences.getInstance();
-       List<String> listaciudadesGuardadas = prefs.getStringList('ciudades') ?? [];
-       debugPrint('Ciudades antes de agregar: ${listaciudadesGuardadas.length}');
-       
-       String ciudadString = json.encode({
-         'nombre': nombre,
-         'latitud': lat,
-         'longitud': lon,
-       });
-       debugPrint('Ciudad a agregar (JSON): $ciudadString');
-       
-       listaciudadesGuardadas.add(ciudadString);
-       await prefs.setStringList('ciudades', listaciudadesGuardadas);
-       debugPrint('Ciudades después de agregar: ${listaciudadesGuardadas.length}');
-       
-       // Verificamos que se guardó correctamente
-       final verificacion = prefs.getStringList('ciudades') ?? [];
-       debugPrint('Verificación - Total ciudades guardadas: ${verificacion.length}');
-       
-       if (!mounted) return;
-       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Ciudad agregada: $nombre')),
-       );
-       // Forzamos la reconstrucción
-       setState(() {
-          ciudadesGuardadas = _ciudadesGuardadas();
-       });
-       debugPrint('=== Fin _agregarCiudad ===');
+    final prefs = await SharedPreferences.getInstance();
+    List<String> listaciudadesGuardadas = prefs.getStringList('ciudades') ?? [];
+
+    String ciudadString = json.encode({
+      'nombre': nombre,
+      'latitud': lat,
+      'longitud': lon,
+    });
+
+    listaciudadesGuardadas.add(ciudadString);
+    await prefs.setStringList('ciudades', listaciudadesGuardadas);
+
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('$nombre agregada exitosamente')));
+
+    setState(() {
+      ciudadesGuardadas = _ciudadesGuardadas();
+      selectedIndex = null;
+      _cityController.clear();
+      ciudadData = [];
+    });
+
+    widget.onCiudadAgregada?.call();
   }
+
+  void _eliminarCiudad(int index, String nombreCiudad) async {
+    final prefs = await SharedPreferences.getInstance();
+    List<String> listaciudadesGuardadas = prefs.getStringList('ciudades') ?? [];
+
+    if (index >= 0 && index < listaciudadesGuardadas.length) {
+      listaciudadesGuardadas.removeAt(index);
+      await prefs.setStringList('ciudades', listaciudadesGuardadas);
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('$nombreCiudad eliminada')));
+
+      setState(() {
+        ciudadesGuardadas = _ciudadesGuardadas();
+      });
+
+      widget.onCiudadAgregada?.call();
+    }
+  }
+
   Future<List<Map<String, dynamic>>> _ciudadesGuardadas() async {
-    debugPrint('=== Cargando ciudades guardadas ===');
     final prefs = await SharedPreferences.getInstance();
     final ciudadesString = prefs.getStringList('ciudades') ?? [];
-    debugPrint('Total ciudades en SharedPreferences: ${ciudadesString.length}');
-    
-    if (ciudadesString.isNotEmpty) {
-      debugPrint('Primera ciudad: ${ciudadesString.first}');
-    }
-    
-    final resultado = ciudadesString.map((ciudadStr) => json.decode(ciudadStr) as Map<String, dynamic>).toList();
-    debugPrint('=== Fin carga ciudades ===');
-    return resultado;
+    return ciudadesString
+        .map((ciudadStr) => json.decode(ciudadStr) as Map<String, dynamic>)
+        .toList();
   }
-  
 }
